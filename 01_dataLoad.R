@@ -47,7 +47,7 @@ gap12 <- gap12[gap12$Category == "Proclamation" |
 object.size(gap12)
 
 
-# Nix
+# Nix non-CONUS and maybe only select western
 # AK Alaska
 # FM Federated States of Micronesia
 # GU Guam
@@ -61,18 +61,16 @@ object.size(gap12)
 # UNKF Unknown Federal
 nix <- c("AK", "FM", "GU", "HI", "MP", "MH", "PW", "PR", "UM", "VI", "UNKF")
 keeps <- c("WA", "OR", "CA", "ID", "MT", "WY", "NV", "UT", "CO", "AZ", "NM", "ND", "SD", "NE", "KS", "OK", "TX")
-conus_gap12 <- gap12[!gap12$State_Nm %in% nix,]
-w_gap12 <- gap12[gap12$State_Nm %in% keeps,]
-object.size(conus_gap12)
+# gap12 <- gap12[!gap12$State_Nm %in% nix,]
+gap12 <- gap12[gap12$State_Nm %in% keeps,]
+object.size(gap12)
 
+# 
+# ## Nix tiny scraps (I confirmed with selecting YNP and checking that SHAPE_Area is in sqm).
+# sqm_in_sqkm <- 1000000
+# sqm_in_10sqkm <- 10000000
+# gap12 <- gap12[gap12$SHAPE_Area > sqm_in_sqkm,] ; object.size(gap12)
 
-## Nix tiny scraps (I confirmed with selecting YNP and checking that SHAPE_Area is in sqm).
-sqm_in_sqkm <- 1000000
-sqm_in_10sqkm <- 10000000
-gap12 <- gap12[gap12$SHAPE_Area > sqm_in_sqkm,] ; object.size(gap12)
-conus_gap12 <- conus_gap12[conus_gap12$SHAPE_Area > sqm_in_sqkm,] ; object.size(conus_gap12)
-
-min(w_gap12$SHAPE_Area)
 
 
 ## Load land cover
@@ -96,7 +94,7 @@ lu.lc <- as.data.frame(levels(lc)[[1]])
 
 
 # PA layer may still have weirdo multi-surface stuff; force multipolygons
-class(conus_gap12)
+class(gap12)
 library(gdalUtilities)
 ensure_multipolygons <- function(X) {
   tmp1 <- tempfile(fileext = ".gpkg")
@@ -106,12 +104,11 @@ ensure_multipolygons <- function(X) {
   Y <- st_read(tmp2)
   st_sf(st_drop_geometry(X), geom = st_geometry(Y))
 }
-conus_gap12 <- ensure_multipolygons(conus_gap12)
-w_gap12 <- ensure_multipolygons(w_gap12)
+gap12 <- ensure_multipolygons(gap12)
+
 
 # Also fix any invalid geometries
-conus_gap12 <- conus_gap12 %>% st_make_valid() %>% st_buffer(dist = 0)
-w_gap12 <- w_gap12 %>% st_make_valid() %>% st_buffer(dist = 0)
+gap12 <- gap12 %>% st_make_valid() %>% st_buffer(dist = 0)
 
 remove(padus)
 
