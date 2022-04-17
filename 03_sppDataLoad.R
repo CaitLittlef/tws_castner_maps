@@ -29,88 +29,72 @@ sapply(zips.m.maps, unzip, exdir = "unzipped_mammals_maps")
 ar.tifs <- list.files("unzipped_amphrept_maps", pattern = ".tif$", full.names = TRUE)
 m.tifs <- list.files("unzipped_mammals_maps", pattern = ".tif$", full.names = TRUE)
 
-# Load all into raster stack.
-# Same crs/res, but diff extents therefore specify quick=TRUE
-ar <- stack(ar.tifs, quick = TRUE)
-a <- raster(ar.tifs[[1]])
-b <- raster(ar.tifs[[2]])
+# These deletions are based on trial and error below for spp that have no correspondence w CR extent
+m.tifs <- m.tifs[-2] 
 
-minValue(a) # 3
-maxValue(a) # 3
-minValue(b) # 3
-maxValue(b) # 3
-minValue(ar) # NA, but why not 3 ??
-maxValue(ar) # NA, but why not 3 ??
+##------------------------------------------------------------------
+## Mask/crop rasters to CR extent.
+# Raster have same crs/res but dif extents. Can load into stack with quick=TRUE.
+# But mask/crop in a loop (e.g., stack[[i]] still doesn't seem to like that.
+# So load each raster separately in the loop.
+# Set all raster values equal to 1 for easy adding. Some are all valued valued at 3.
 
-
-## Load Castner Range
-cr <- load_f(paste0(data.dir, "CastnerRange.shp"))
-
-
-# https://gis.stackexchange.com/questions/217082/handling-multiple-extent-problem-to-create-raster-stack-in-r
-# https://stackoverflow.com/questions/53440229/make-raster-stack-with-different-extent
-# https://gis.stackexchange.com/questions/385850/mask-and-crop-a-raster-to-multiple-polygons-in-r
-
-# Mask and cropping to extent of cr
-c <- raster::mask(raster::crop(a, raster::extent(cr)), cr)
-d <- mask(crop(b, extent(cr)), cr)
-e <- mask(crop(b, cr), cr)
-
-plot(c)
-plot(d)
-plot(e)
-
-f <- mask(crop(ar, extent(cr), cr))
-
-
-( rp <- do.call(stack,lapply(1:nrow(p), function(x) 
-  raster::mask(crop(r, extent(p)), p[x,]) )) )
-plot(rp)
-
-?do.call
-
-# This is for cropping same raster to multiple polygons, from last link above
-( rp <- do.call(stack,lapply(1:nrow(p), function(x) 
-  raster::mask(crop(r, extent(p)), p[x,]) )) )
-plot(rp)
-
-# Try it for cropping stacked raster to single polygon
-( rp <- do.call(stack,lapply(1:nlayers(ar), function(x) 
-  raster::mask(crop(ar[[x]], extent(cr)), cr) )) )
-# 
-# Error in h(simpleError(msg, call)) : 
-#   error in evaluating the argument 'x' in selecting a method for function 'mask': Failure during raster IO
-
-# Try it for cropping stacked raster to single polygon
-# Do.call says apply this function (stack) to a list (returned from lapply)
-( rp <- do.call(stack,lapply(1:nlayers(ar), function(x)
-  mask(crop(ar[[x]], extent(cr)), cr) )) )
-
-# Or just do this all in a loop??
-
-x <- stack()
-for(i in 1:nlayers(ar)){
-  m <- mask(crop(ar[[i]], extent(cr)), cr)
-  x <- stack(x, m)
+# Create empty stack
+maps <- stack()
+taxa.tifs <- ar.tifs ; taxa = "amphibian/reptile"
+# taxa.tifs <- m.tifs ; taxa = "mammal"
+for(i in 1:length(taxa.tifs)){ #Loop through each of the tifs
+  r <- raster(taxa.tifs[i]) #Load tif
+  m <- mask(crop(r, extent(cr)), cr) # crop does x/y extent; mask uses precise footprint
+  m <- reclassify(m, cbind(0,10,1)) # reclassify from 0 to 10 as 1
+  maps <- stack(maps, m)
+  print(paste0(taxa, " number ", i, " is complete."))
 }
-# 
-# Error in h(simpleError(msg, call)) : 
-#   error in evaluating the argument 'x' in selecting a method for function 'mask': Failure during raster IO
 
+plot(maps)
+s <- sum(maps, na.rm = TRUE)
+plot(s)
+
+
+
+
+## -----------------------------------------------------------------
+###########################
+## REPRODUCIBLE EXAMPLE# ##
+###########################
+
+# Ref: https://gis.stackexchange.com/questions/385850/mask-and-crop-a-raster-to-multiple-polygons-in-r
+
+# Create dummy rasters and polygon
 filename <- system.file("external/test.grd", package="raster")
 r <- raster(filename)
+f <- flip(r, direction = 'x')
+rf <- stack(r,f)
 plot(r)
-t <- flip(r, direction = 'x')
-plot(t)
 
-p <- as(sf::st_buffer(as(sampleRandom(r, 4, sp=TRUE), "sf"), 200), "Spatial")
-plot(p)
-plot(r)
+# Create polygons
+p <- as(sf::st_buffer(as(sampleRandom(r, 4, sp=TRUE), "sf"), 500), "Spatial")
 plot(p, add = TRUE)
 
-# # This is for cropping same raster to multiple polygons, from last link above
-# ( rp <- do.call(stack,lapply(1:nrow(p), function(x) 
-#   raster::mask(crop(r, extent(p)), p[x,]) )) )
-# plot(rp)
+# Loop through each raster in the stack of maps, crop it, mask it, then stick back in stack
+s <- stack() # create empty stack for adding to
+for(i in 1:nlayers(rf)){
+# for(i in 1){
+  r <- rf[[i]] # subset to the first raster in the stack of maps
+  m <- raster::mask(raster::crop(r, extent(p)), p) # mask and crop per polygon
+  s <- stack(s, m) # add newly croped/masked raster into the stack
+}
+# 
+plot(s[[1]])
+plot(s[[2]])
+# ^ THIS WORKS
+## -----------------------------------------------------------------
+
+
+
+
+# Error when quick = TRUE
+# Error in h(simpleError(msg, call)) : 
+#   error in evaluating the argument 'x' in selecting a method for function 'mask': Failure during raster IO
 
 
