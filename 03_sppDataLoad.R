@@ -5,55 +5,117 @@
 
 # Source of species present: https://ricklobello.wordpress.com/2016/04/23/biodiversity-of-the-castner-range/
 # Data: https://gapanalysis.usgs.gov/apps/species-data-download/
-
-# Temporarily set working directory
+# Temp set local wd to avoid massive upload to Drive proj folder.
 setwd("C:/Users/clitt/OneDrive/Desktop/spp_hab")
 
-# List all the zips I've downloaded
-zips.ar.orig <- list.files("zipped_amphrept", pattern = ".zip", full.names = TRUE)
-zips.m.orig <- list.files("zipped_mammals", pattern = ".zip", full.names = TRUE)
 
-# Apply unzip function over vector of original zips; put into new folder
-sapply(zips.ar.orig, unzip, exdir = "unzipped_amphrept_orig")
-sapply(zips.m.orig, unzip, exdir = "unzipped_mammals_orig")
-
-# Find the next level of zips (ie the zipped raster of habitat maps)
-zips.ar.maps <- list.files("unzipped_amphrept_orig", pattern = ".zip", full.names = TRUE)
-zips.m.maps <- list.files("unzipped_mammals_orig", pattern = ".zip", full.names = TRUE)
-
-# Apply unzip function over vector of map zips; put into new folder
-sapply(zips.ar.maps, unzip, exdir = "unzipped_amphrept_maps")
-sapply(zips.m.maps, unzip, exdir = "unzipped_mammals_maps")
-
-# List the tifs in each; $ to specify "end of line" so won't grab, eg, ".tif.var.dbf"
-ar.tifs <- list.files("unzipped_amphrept_maps", pattern = ".tif$", full.names = TRUE)
-m.tifs <- list.files("unzipped_mammals_maps", pattern = ".tif$", full.names = TRUE)
-
-# These deletions are based on trial and error below for spp that have no correspondence w CR extent
-m.tifs <- m.tifs[-2] 
+## ** UPDATE ** ##
+# I RECALLED THAT GAP HAD ALREADY CREATED SPP RICHNESS OVERLAYS :/
+# THEY'RE LOADED BELOW AND WHAT I USED FOR FINAL MAPS FOR CASTNER RANGE.
+# BUT THEY DON'T HAVE INDIVIDAUL SPECIES PARSED, SO I CREATED SEPARATE MAPS
+# FOR THE TWO IMPERILLED SPECIES:
+# TX Lyresnake (rTXLYx; aka Chihuahuan Desert) & TX Horned Lizard (rTHLIx)
+# rTXLYx_CONUS_HabMap_2001v1.tif
+# rTHLIx_CONUS_HabMap_2001v1.tif
 
 ##------------------------------------------------------------------
+
+# Create vector of downloaded zips' paths.
+# Apply unzip over that vector. Put stuff in new folder. 
+list.files("zipped_amphrept_orig",
+           pattern = ".zip", full.names = TRUE) %>%
+  sapply(unzip, exdir = "unzipped_amphrept_orig")
+
+list.files("zipped_mammals_orig",
+           pattern = ".zip", full.names = TRUE) %>%
+  sapply(unzip, exdir = "unzipped_mammals_orig")
+
+
+# Find next level of zips (ie zipped maps) and unzip.
+list.files("unzipped_amphrept_orig",
+           pattern = ".zip", full.names = TRUE) %>%
+  sapply(unzip, exdir = "unzipped_amphrept_maps")
+
+list.files("unzipped_mammals_orig",
+           pattern = ".zip", full.names = TRUE) %>%
+  sapply(unzip, exdir = "unzipped_mammals_maps")
+
+
+# List tifs in each; $ = hard stop.
+ar.tifs <- list.files("unzipped_amphrept_maps",
+                      pattern = ".tif$", full.names = TRUE)
+
+m.tifs <- list.files("unzipped_mammals_maps",
+                     pattern = ".tif$", full.names = TRUE)
+
+
+# Nix spp if mask/crop fails b/c of no extent overlap.
+# But just leave in spp for which mask/crop works even if no habitat (adds zero)
+nix <- c("unzipped_mammals_maps/mNPMOx_CONUS_HabMap_2001v1.tif")
+m.tifs <- m.tifs[!m.tifs %in% nix] 
+
+
+
+##------------------------------------------------------------------
+
 ## Mask/crop rasters to CR extent.
-# Raster have same crs/res but dif extents. Can load into stack with quick=TRUE.
+# NB Raster have same crs/res but dif extents. Can load into stack with quick=TRUE.
 # But mask/crop in a loop (e.g., stack[[i]] still doesn't seem to like that.
-# So load each raster separately in the loop.
+# So load each raster separately in the loop -- either amph/rept or mamm
 # Set all raster values equal to 1 for easy adding. Some are all valued valued at 3.
 
 # Create empty stack
 maps <- stack()
-taxa.tifs <- ar.tifs ; taxa = "amphibian/reptile"
-# taxa.tifs <- m.tifs ; taxa = "mammal"
+taxa.tifs <- ar.tifs ; taxa = "amph_rept"
+taxa.tifs <- m.tifs ; taxa = "mammal"
 for(i in 1:length(taxa.tifs)){ #Loop through each of the tifs
   r <- raster(taxa.tifs[i]) #Load tif
   m <- mask(crop(r, extent(cr)), cr) # crop does x/y extent; mask uses precise footprint
   m <- reclassify(m, cbind(0,10,1)) # reclassify from 0 to 10 as 1
   maps <- stack(maps, m)
-  print(paste0(taxa, " number ", i, " is complete."))
+  print(paste0(taxa, "#", i, " is complete."))
 }
 
 plot(maps)
+
+# Add all rasters (now with val 1) together for total spp richness map.
 s <- sum(maps, na.rm = TRUE)
 plot(s)
+minValue(s)
+maxValue(s)
+
+# Write raster
+writeRaster(s, paste0(data.dir, taxa, "_richness_", today, ".tif"))
+
+
+
+
+## Load and crop/mask GAP's ALREADY CREATED spp richness layers. UGH.
+# d <- raster("G:/My Drive/1Data/spp/amphibian_richness_habitat30m.tif") ; taxa = "amph"
+# d <- raster("G:/My Drive/1Data/spp/bird_richness_habitat30m.tif") ; taxa = "bird"
+# d <- raster("G:/My Drive/1Data/spp/mammal_richness_habitat30m.tif") ; taxa = "mammal"
+d <- raster("G:/My Drive/1Data/spp/reptile_richness_habitat30m.tif") ; taxa = "rept"
+d <- mask(crop(d, extent(cr)), cr)
+# Write raster
+writeRaster(d, paste0(data.dir, "GAP_", taxa, "_richness_", today, ".tif"), overwrite = TRUE)
+
+
+## Load and crop just the state threatened spp
+snake <- raster("unzipped_amphrept_maps/rTXLYx_CONUS_HabMap_2001v1.tif")
+snake <- mask(crop(snake, extent(cr)), cr)
+lizard <- raster("unzipped_amphrept_maps/rTHLIx_CONUS_HabMap_2001v1.tif")
+lizard <- mask(crop(lizard, extent(cr)), cr)
+
+plot(snake)
+plot(lizard)
+
+writeRaster(snake, paste0(data.dir, "TXLyreSnake_", today, ".tif"), overwrite = TRUE)
+writeRaster(lizard, paste0(data.dir, "TXHornedLiz_", today, ".tif"), overwrite = TRUE)
+
+
+# Reset working dir
+setwd("G:/My Drive/2TWS Castner Range Maps/analyses/tws_castner_maps/")
+
 
 
 
@@ -89,12 +151,4 @@ plot(s[[1]])
 plot(s[[2]])
 # ^ THIS WORKS
 ## -----------------------------------------------------------------
-
-
-
-
-# Error when quick = TRUE
-# Error in h(simpleError(msg, call)) : 
-#   error in evaluating the argument 'x' in selecting a method for function 'mask': Failure during raster IO
-
 
